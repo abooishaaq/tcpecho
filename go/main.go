@@ -1,8 +1,16 @@
 package main
 
-import "net"
+import (
+	"net"
+	"sync"
+)
 
-var conns []*net.Conn
+type Conns struct {
+	mutex sync.Mutex
+	conns []*net.Conn
+}
+
+var conns Conns
 
 func handleConn(conn net.Conn) {
 	defer conn.Close()
@@ -14,14 +22,16 @@ func handleConn(conn net.Conn) {
 			break
 		}
 		str := string(buf[0 : n-1])
-		for _, c := range conns {
+		for _, c := range conns.conns {
 			(*c).Write([]byte(str + "\n"))
 		}
 	}
 
-	for i, c := range conns {
+	for i, c := range conns.conns {
 		if *c == conn {
-			conns = append(conns[:i], conns[i+1:]...)
+			conns.mutex.Lock()
+			conns.conns = append(conns.conns[:i], conns.conns[i+1:]...)
+			conns.mutex.Unlock()
 		}
 	}
 }
@@ -38,7 +48,9 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
-		conns = append(conns, &conn)
+		conns.mutex.Lock()
+		conns.conns = append(conns.conns, &conn)
+		conns.mutex.Unlock()
 		go handleConn(conn)
 	}
 }
